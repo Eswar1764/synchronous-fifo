@@ -1,0 +1,123 @@
+`timescale 1ns/1ps
+
+module tb;
+
+  reg           clk;
+  reg  [15:0]   din;
+  wire [15:0]   dout;
+  reg  [15:0]   rdata;
+  wire          empty;
+  reg           rd_en;
+  reg           wr_en;
+  wire          full;
+  reg           rstn;
+  reg           stop;
+
+  // Predefined set of data to push into FIFO
+  reg [15:0] test_data [0:19];
+
+  // Instantiate DUT
+  sync_fifo u_sync_fifo (
+    .rstn (rstn),
+    .wr_en(wr_en),
+    .rd_en(rd_en),
+    .clk  (clk),
+    .din  (din),
+    .dout (dout),
+    .empty(empty),
+    .full (full)
+  );
+
+  // Clock generation: 20ns period
+  always #10 clk <= ~clk;
+
+  // Initialization and reset
+  initial begin
+    clk   <= 0;
+    rstn  <= 0;
+    wr_en <= 0;
+    rd_en <= 0;
+    stop  <= 0;
+    #50 rstn <= 1;
+  end
+
+  // Initialize test data with fixed pattern
+  initial begin
+    test_data[0]  = 16'h0001;
+    test_data[1]  = 16'h0002;
+    test_data[2]  = 16'h0003;
+    test_data[3]  = 16'h0004;
+    test_data[4]  = 16'h0005;
+    test_data[5]  = 16'h0006;
+    test_data[6]  = 16'h0007;
+    test_data[7]  = 16'h0008;
+    test_data[8]  = 16'h0009;
+    test_data[9]  = 16'h000A;
+    test_data[10] = 16'h000B;
+    test_data[11] = 16'h000C;
+    test_data[12] = 16'h000D;
+    test_data[13] = 16'h000E;
+    test_data[14] = 16'h000F;
+    test_data[15] = 16'h1234;
+    test_data[16] = 16'h5678;
+    test_data[17] = 16'h9ABC;
+    test_data[18] = 16'hDEF0;
+    test_data[19] = 16'h1357;
+  end
+integer i;
+  // WRITE process - pushes fixed data into FIFO
+  initial begin
+    @(posedge clk);
+    for (i = 0; i < 20; i = i + 1) begin
+      // Wait if FIFO is full
+      while (full) begin
+        @(posedge clk);
+        $display("[%0t] FIFO is full, waiting...", $time);
+      end
+
+      // Write next fixed value
+      wr_en <= 1;
+      din   <= test_data[i];
+      $display("[%0t] WRITE: i=%0d, din=0x%0h", $time, i, din);
+
+      @(posedge clk);
+      wr_en <= 0;
+    end
+
+    stop = 1;
+  end
+
+  // READ process - reads and displays data in order
+  integer read_idx = 0;
+  initial begin
+    @(posedge clk);
+    while (!stop || !empty) begin
+      // Wait if FIFO is empty
+      while (empty) begin
+        rd_en <= 0;
+        @(posedge clk);
+      end
+
+      // Read next value
+      rd_en <= 1;
+      @(posedge clk);
+      rdata <= dout;
+
+      if (rdata !== test_data[read_idx]) begin
+        $display("[%0t]  READ ERROR: expected=0x%0h, got=0x%0h (idx=%0d)",
+                 $time, test_data[read_idx], rdata, read_idx);
+      end else begin
+        $display("[%0t]  READ OK: idx=%0d, data=0x%0h",
+                 $time, read_idx, rdata);
+      end
+
+      read_idx = read_idx + 1;
+      rd_en <= 0;
+    end
+
+    #200;
+    $display("\n--- Simulation completed ---\n");
+    $finish;
+  end
+
+endmodule
